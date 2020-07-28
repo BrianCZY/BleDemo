@@ -15,6 +15,7 @@ import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
     private val TAG = MainActivity::class.java.simpleName
+    private var IMEI: String = ""
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -25,8 +26,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initListener() {
-        bt_ble.setOnClickListener {
-            startSearchBle()
+        bt_connect.setOnClickListener {
+
+            if (et_ble.text.isNotEmpty()) {
+                IMEI = et_ble.text.toString().trim()
+                startSearchBle() //查找设备
+            } else {
+                Toast.makeText(this, "请输入设备号！", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -37,13 +44,20 @@ class MainActivity : AppCompatActivity() {
 //                TODO("Not yet implemented")
 
                 Log.d(TAG, "OnBleStateListener  onSearchBleSuccess")
-                BleManager.instance.stopScanBLE()
+                bleDevice?.run {
+                    if (this?.name.equals(IMEI)) {
+                        BleManager.instance.stopScanBLE()
+                        BleManager.instance.connectDevice(this@MainActivity, this)
+                    }
+                }
 
 
             }
 
             override fun onBleConnect(deviceAddress: String?, deviceName: String?) {
 //                TODO("Not yet implemented")
+                Log.d(TAG, "OnBleStateListener  onBleConnect")
+                setDeviceState()
             }
 
             override fun onBleDisconnect() {
@@ -55,6 +69,15 @@ class MainActivity : AppCompatActivity() {
             }
 
         }
+    }
+
+    private fun setDeviceState() {
+        if (BleManager.instance.sIsBleConnect) {
+            tv_ble_state.text = "已连接"
+        } else {
+            tv_ble_state.text = "未已连接"
+        }
+
     }
 
     private fun startSearchBle() {

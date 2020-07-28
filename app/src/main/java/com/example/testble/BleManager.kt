@@ -1,7 +1,6 @@
 package com.example.testble
 
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
+import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
@@ -13,12 +12,19 @@ import java.util.*
 
 class BleManager private constructor() {
 
+
+    private var mCharacteristic: BluetoothGattCharacteristic? = null
+    private var mBleDevice: BluetoothDeviceBean? = null
+    private var mBluetoothGatt: BluetoothGatt? = null
     private val TAG: String = BleManager::class.java.simpleName
     private val UUID_SEVICE = "0000ffe0-0000-1000-8000-00805f9b34fb"
     private val UUID_CHARWRITE = "0000ffe1-0000-1000-8000-00805f9b34fb"
     lateinit private var mBluetoothAdapter: BluetoothAdapter
+    var sIsBleConnect = false //是否连接状态
+
 
     companion object {
+
 
         val instance = SingletonHolder.singleton
 
@@ -93,6 +99,127 @@ class BleManager private constructor() {
 //            );
 //            startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
 //        }
+
+    }
+
+    fun connectDevice(context: Context, bleDevice: BluetoothDeviceBean) {
+        mBleDevice = bleDevice
+        //发起连接
+//            private void connect(BluetoothDevice device){
+//                mBluetoothGatt = device.connectGatt(context, false, mBluetoothGattCallback);
+//            }
+        val localBluetoothDevice: BluetoothDevice =
+            mBluetoothAdapter.getRemoteDevice(bleDevice.address)
+
+        mBluetoothGatt = localBluetoothDevice?.connectGatt(context, false, mBluetoothGattCallback)
+
+    }
+
+
+    private val mBluetoothGattCallback: BluetoothGattCallback = object : BluetoothGattCallback() {
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?,
+            status: Int
+        ) {
+            super.onCharacteristicRead(gatt, characteristic, status)
+            Log.d(TAG, "BluetoothGattCallback  onCharacteristicRead  --------")
+        }
+
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?,
+            status: Int
+        ) {
+            super.onCharacteristicWrite(gatt, characteristic, status)
+            Log.d(TAG, "BluetoothGattCallback  onCharacteristicWrite  --------")
+        }
+
+        override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
+            Log.d(TAG, "BluetoothGattCallback  onServicesDiscovered  --------")
+            //获取特定UUID的服务
+            gatt?.run {
+
+                //获取特定UUID的服务
+                val service: BluetoothGattService =
+                    getService(UUID.fromString(UUID_SEVICE))
+
+                if (service != null) {
+                    //获取该服务下特定UUID的特征
+                    mCharacteristic =
+                        service.getCharacteristic(UUID.fromString(UUID_CHARWRITE))
+                }
+                //开启对这个特征的通知
+                this.setCharacteristicNotification(mCharacteristic, true)
+
+            }
+        }
+
+        override fun onDescriptorWrite(
+            gatt: BluetoothGatt?,
+            descriptor: BluetoothGattDescriptor?,
+            status: Int
+        ) {
+            super.onDescriptorWrite(gatt, descriptor, status)
+            Log.d(TAG, "BluetoothGattCallback  onDescriptorWrite  --------")
+        }
+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt?,
+            characteristic: BluetoothGattCharacteristic?
+        ) {
+            super.onCharacteristicChanged(gatt, characteristic)
+            Log.d(TAG, "BluetoothGattCallback  onCharacteristicChanged  --------")
+        }
+
+        override fun onDescriptorRead(
+            gatt: BluetoothGatt?,
+            descriptor: BluetoothGattDescriptor?,
+            status: Int
+        ) {
+            super.onDescriptorRead(gatt, descriptor, status)
+            Log.d(TAG, "BluetoothGattCallback  onDescriptorRead  --------")
+        }
+
+        override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+            Log.d(TAG, "BluetoothGattCallback  onConnectionStateChange  --------")
+            when (newState) {
+                BluetoothProfile.STATE_DISCONNECTED -> { //断开连接
+                    sIsBleConnect = false
+                    mBluetoothGatt?.disconnect()
+                    mBluetoothGatt?.close()
+                    mBluetoothGatt = null
+                    mOnBleStateListener?.onBleDisconnect()
+                    Log.d(TAG, "BluetoothGattCallback  newState == 0 设备 断开连接  --------")
+                }
+                BluetoothProfile.STATE_CONNECTED -> {
+                    Log.d(TAG, "BluetoothGattCallback  newState == 2 设备 已连接  --------")
+                    sIsBleConnect = true
+                    mBleDevice?.run {
+                        mOnBleStateListener?.onBleConnect(
+                            address,
+                            name
+                        )
+                    }
+                    gatt?.discoverServices() //发现服务
+
+
+                }
+                else -> {
+//                    gatt?.disconnect()
+//                    gatt?.close()
+                }
+            }
+        }
+    }
+
+    fun write(str: String) {
+        mCharacteristic?.run {
+            var byteArray: ByteArray = byteArrayOf()
+            this.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+            this.value = byteArray
+            mBluetoothGatt?.writeCharacteristic(this)
+        }
 
     }
 
