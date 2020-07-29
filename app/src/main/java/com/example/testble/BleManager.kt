@@ -9,6 +9,8 @@ import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
 import java.util.*
+import kotlin.experimental.and
+
 
 class BleManager private constructor() {
 
@@ -115,6 +117,7 @@ class BleManager private constructor() {
 
     }
 
+    private var canNendNext = true
 
     private val mBluetoothGattCallback: BluetoothGattCallback = object : BluetoothGattCallback() {
         override fun onCharacteristicRead(
@@ -124,6 +127,9 @@ class BleManager private constructor() {
         ) {
             super.onCharacteristicRead(gatt, characteristic, status)
             Log.d(TAG, "BluetoothGattCallback  onCharacteristicRead  --------")
+            val arrayOfByte: ByteArray? = characteristic?.getValue()
+            val tmpstr: String? = byteArrayToStr(arrayOfByte)
+            Log.d(TAG, "BluetoothGattCallback onCharacteristicRead 蓝牙  接收到原始数据:$tmpstr")
         }
 
         override fun onCharacteristicWrite(
@@ -132,6 +138,7 @@ class BleManager private constructor() {
             status: Int
         ) {
             super.onCharacteristicWrite(gatt, characteristic, status)
+            canNendNext = true
             Log.d(TAG, "BluetoothGattCallback  onCharacteristicWrite  --------")
         }
 
@@ -150,7 +157,20 @@ class BleManager private constructor() {
                         service.getCharacteristic(UUID.fromString(UUID_CHARWRITE))
                 }
                 //开启对这个特征的通知
-                this.setCharacteristicNotification(mCharacteristic, true)
+                mBluetoothGatt?.setCharacteristicNotification(mCharacteristic, true)
+                //第二步，通过对手机B(远程)中需要开启通知的那个特征的CCCD写入开启通知命令，来打开通知
+
+                //第二步，通过对手机B(远程)中需要开启通知的那个特征的CCCD写入开启通知命令，来打开通知
+                val descriptor: BluetoothGattDescriptor? = mCharacteristic?.getDescriptor(
+                    UUID.fromString(
+                        UUID_CHARWRITE
+                    )
+                )
+
+                //设置特征的写入类型为默认类型
+                mCharacteristic?.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                mBluetoothGatt?.writeDescriptor(descriptor)
 
             }
         }
@@ -168,17 +188,31 @@ class BleManager private constructor() {
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic?
         ) {
-            super.onCharacteristicChanged(gatt, characteristic)
             Log.d(TAG, "BluetoothGattCallback  onCharacteristicChanged  --------")
+            super.onCharacteristicChanged(gatt, characteristic)
+            val arrayOfByte: ByteArray? = characteristic?.getValue()
+            val tmpstr: String? = byteArrayToStr(arrayOfByte)
+            Log.d(TAG, "BluetoothGattCallback  onCharacteristicChanged  蓝牙  接收到原始数据:$tmpstr")
+//            val tmp: String? = byteArrayToStr(arrayOfByte)
+//            val tmp: String? = byteArrayToHexStr(arrayOfByte)
+//            Log.d(TAG, "BluetoothGattCallback  onCharacteristicChanged  蓝牙  接收到数据:$tmp")
+            mOnBleStateListener?.onReceiveBleMsg(tmpstr)
+
+
         }
+
 
         override fun onDescriptorRead(
             gatt: BluetoothGatt?,
             descriptor: BluetoothGattDescriptor?,
             status: Int
         ) {
-            super.onDescriptorRead(gatt, descriptor, status)
             Log.d(TAG, "BluetoothGattCallback  onDescriptorRead  --------")
+            val arrayOfByte: ByteArray? = descriptor?.getValue()
+            val tmpstr: String? = byteArrayToStr(arrayOfByte)
+            Log.d(TAG, "BluetoothGattCallback 蓝牙  接收到原始数据:$tmpstr")
+//            super.onDescriptorRead(gatt, descriptor, status)
+
         }
 
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
@@ -201,7 +235,7 @@ class BleManager private constructor() {
                             name
                         )
                     }
-                    gatt?.discoverServices() //发现服务
+                    mBluetoothGatt?.discoverServices() //发现服务
 
 
                 }
@@ -213,13 +247,83 @@ class BleManager private constructor() {
         }
     }
 
-    fun write(str: String) {
-        mCharacteristic?.run {
-            var byteArray: ByteArray = byteArrayOf()
-            this.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-            this.value = byteArray
-            mBluetoothGatt?.writeCharacteristic(this)
+    private val PACKAGE_SIZE = 20  //一个包的大小
+
+    fun byteArrayToStr(byteArray: ByteArray?): String? {
+        return byteArray?.let { String(it) }
+    }
+
+    fun byteArrayToHexStr(byteArray: ByteArray?): String? {
+        if (byteArray == null) {
+            return null
         }
+        val hexArray = "0123456789ABCDEF".toCharArray()
+        val hexChars = CharArray(byteArray.size * 2)
+        for (j in byteArray.indices) {
+            val v: Int = (byteArray[j] and 0xFF.toByte()).toInt()
+            hexChars[j * 2] = hexArray[v ushr 4]
+            hexChars[j * 2 + 1] = hexArray[v and 0x0F]
+        }
+        return String(hexChars)
+    }
+
+    @Synchronized
+    fun write(str: String): Boolean {
+
+
+        mCharacteristic?.run {
+
+            val byteArray = str.toByteArray(charset("GBK"))
+
+//            var byteArrayTemp: ByteArray = byteArrayOf()
+//            this.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+//            this.value = byteArrayTemp
+//            mBluetoothGatt?.writeCharacteristic(this)
+            val count = byteArray.size / PACKAGE_SIZE
+
+            try {
+
+                for (i in 0..byteArray.size step PACKAGE_SIZE) {
+                    var byteArrayTemp: ByteArray
+                    if (byteArray.size < i + PACKAGE_SIZE) {
+                        byteArrayTemp = ByteArray(byteArray.size - i)
+                        System.arraycopy(
+                            byteArray,
+                            i,
+                            byteArrayTemp,
+                            0,
+                            byteArray.size - i
+                        )
+                    } else {
+                        byteArrayTemp = ByteArray(PACKAGE_SIZE)
+                        System.arraycopy(
+                            byteArray,
+                            i,
+                            byteArrayTemp,
+                            0,
+                            PACKAGE_SIZE
+                        )
+                    }
+
+                    if (byteArrayTemp.size > 0) {
+                        this.value = byteArrayTemp
+                        val state = mBluetoothGatt?.writeCharacteristic(this)
+                        Log.d(TAG, "write  state : $state")
+                        //TODO 返回 错误
+                    }
+                    Thread.sleep(10)
+
+
+                }
+
+            } catch (e: NegativeArraySizeException) {
+                e.printStackTrace()
+                return false
+            } finally {
+                return true
+            }
+        }
+        return true
 
     }
 

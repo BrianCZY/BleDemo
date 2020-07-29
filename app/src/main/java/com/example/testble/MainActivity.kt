@@ -4,13 +4,17 @@ import android.Manifest
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 
 class MainActivity : AppCompatActivity() {
@@ -33,6 +37,23 @@ class MainActivity : AppCompatActivity() {
                 startSearchBle() //查找设备
             } else {
                 Toast.makeText(this, "请输入设备号！", Toast.LENGTH_SHORT).show()
+            }
+
+        }
+        bt_test.setOnClickListener {
+            sendbleMsg("#db_sk_b1_cmd,0b1,B116340002,B8.01,1,7,0,da")
+        }
+    }
+
+    fun sendbleMsg(str: String) {
+
+        GlobalScope.launch {
+            val sendSuccess = BleManager.instance.write(str)
+            if (sendSuccess) {
+                withContext(Dispatchers.Main) {
+                    tv_send_text_content.text = str
+                }
+
             }
         }
     }
@@ -57,20 +78,39 @@ class MainActivity : AppCompatActivity() {
             override fun onBleConnect(deviceAddress: String?, deviceName: String?) {
 //                TODO("Not yet implemented")
                 Log.d(TAG, "OnBleStateListener  onBleConnect")
-                setDeviceState()
+                runOnUiThread {
+                    setDeviceState()
+                }
+
             }
 
             override fun onBleDisconnect() {
 //                TODO("Not yet implemented")
+                setDeviceState()
             }
 
             override fun onReceiveBleMsg(msg: String?) {
-//                TODO("Not yet implemented")
+                //接收到数据
+                //根据具体的业务解释数据
+                msg?.run {
+                    stringBuilder.append(msg) //拼接多个数据包
+                    if (this.endsWith("\r\n")) {
+                        //一组数据结束
+                        val strTemp = stringBuilder.toString()
+                        stringBuilder.clear()
+                        runOnUiThread {
+                            tv_receiver_text_content.text = strTemp
+                        }
+                    }
+
+                }
+
             }
 
         }
     }
 
+    private val stringBuilder = StringBuilder("")
     private fun setDeviceState() {
         if (BleManager.instance.sIsBleConnect) {
             tv_ble_state.text = "已连接"
