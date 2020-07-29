@@ -117,7 +117,7 @@ class BleManager private constructor() {
 
     }
 
-    private var canNendNext = true
+    private var sIsSendNext = true  //一个数据包是否发送完成
 
     private val mBluetoothGattCallback: BluetoothGattCallback = object : BluetoothGattCallback() {
         override fun onCharacteristicRead(
@@ -138,7 +138,7 @@ class BleManager private constructor() {
             status: Int
         ) {
             super.onCharacteristicWrite(gatt, characteristic, status)
-            canNendNext = true
+            sIsSendNext = true
             Log.d(TAG, "BluetoothGattCallback  onCharacteristicWrite  --------")
         }
 
@@ -268,19 +268,13 @@ class BleManager private constructor() {
     }
 
     @Synchronized
-    fun write(str: String): Boolean {
+    fun writeback(str: String): Boolean {
 
 
         mCharacteristic?.run {
 
             val byteArray = str.toByteArray(charset("GBK"))
-
-//            var byteArrayTemp: ByteArray = byteArrayOf()
-//            this.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-//            this.value = byteArrayTemp
-//            mBluetoothGatt?.writeCharacteristic(this)
             val count = byteArray.size / PACKAGE_SIZE
-
             try {
 
                 for (i in 0..byteArray.size step PACKAGE_SIZE) {
@@ -315,6 +309,71 @@ class BleManager private constructor() {
 
 
                 }
+
+            } catch (e: NegativeArraySizeException) {
+                e.printStackTrace()
+                return false
+            } finally {
+                return true
+            }
+        }
+        return true
+
+    }
+
+
+    @Synchronized
+    fun write(str: String): Boolean {
+
+
+        mCharacteristic?.run {
+
+            val byteArray = str.toByteArray(charset("GBK"))
+            val count = byteArray.size / PACKAGE_SIZE
+            try {
+                var writeCount = 0;   //43
+                while (writeCount < byteArray.size) {
+
+                    if (sIsSendNext) {
+                        var byteArrayTemp: ByteArray
+                        if (byteArray.size < writeCount + PACKAGE_SIZE) {
+                            byteArrayTemp = ByteArray(byteArray.size - writeCount)
+                            System.arraycopy(
+                                byteArray,
+                                writeCount,
+                                byteArrayTemp,
+                                0,
+                                byteArray.size - writeCount
+                            )
+                        } else {
+                            byteArrayTemp = ByteArray(PACKAGE_SIZE)
+                            System.arraycopy(
+                                byteArray,
+                                writeCount,
+                                byteArrayTemp,
+                                0,
+                                PACKAGE_SIZE
+                            )
+                        }
+                        if (byteArrayTemp.size > 0) {
+                            this.value = byteArrayTemp
+                            sIsSendNext = false  //写数据中
+                            val state = mBluetoothGatt?.writeCharacteristic(this) ?: false
+                            if (state) {
+//                                sIsSendNext =true
+                                writeCount += PACKAGE_SIZE
+                            } else {
+                                //发送失败了
+                                sIsSendNext = true
+                            }
+                            Log.d(TAG, "write  state : $state")
+                            //TODO 返回 错误
+                        }
+                    }
+                    Thread.sleep(10)
+                }
+
+                
 
             } catch (e: NegativeArraySizeException) {
                 e.printStackTrace()
