@@ -168,9 +168,9 @@ class BleManager private constructor() {
                 )
 
                 //设置特征的写入类型为默认类型
-                mCharacteristic?.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                mBluetoothGatt?.writeDescriptor(descriptor)
+//                mCharacteristic?.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+//                descriptor?.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+//                mBluetoothGatt?.writeDescriptor(descriptor)
 
             }
         }

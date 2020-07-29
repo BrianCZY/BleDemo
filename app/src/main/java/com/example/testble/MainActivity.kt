@@ -42,8 +42,10 @@ class MainActivity : AppCompatActivity() {
         }
         bt_test.setOnClickListener {
             sendbleMsg("#db_sk_b1_cmd,0b1,B116340002,B8.01,1,7,0,da")
+            //#db_sk_b1_ip,0b1,B116340002,B8.01,1,20,1,234,1.23,1.24,0.01,0.01,0.01,0,24,183,52,0,2017-06-02 16:30:33,0\r\n
         }
     }
+
 
     fun sendbleMsg(str: String) {
 
@@ -85,8 +87,10 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onBleDisconnect() {
-//                TODO("Not yet implemented")
-                setDeviceState()
+                runOnUiThread {
+                    setDeviceState()
+                }
+
             }
 
             override fun onReceiveBleMsg(msg: String?) {
@@ -98,6 +102,15 @@ class MainActivity : AppCompatActivity() {
                         //一组数据结束
                         val strTemp = stringBuilder.toString()
                         stringBuilder.clear()
+
+                        if (strTemp.contains("db_sk_b1_ip")) {
+                            sendbleMsg("#db_sk_b1_ip,0b1,B116340002,B8.01,1,20,1,234,1.23,1.24,0.01,0.01,0.01,0,24,183,52,0,2017-06-02 16:30:33,0,da")
+                        }
+
+                        if (strTemp.contains("db_sk_report_info_b1")) {
+                            sendbleMsg("#db_sk_report_info_b1,0b1,B116340002,B8.01,1,11,1,0,0,0,0,da")
+                        }
+
                         runOnUiThread {
                             tv_receiver_text_content.text = strTemp
                         }
